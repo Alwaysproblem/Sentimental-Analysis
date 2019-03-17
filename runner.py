@@ -29,6 +29,9 @@ import glob
 
 import implementation as imp
 
+import zipfile as zp
+
+
 BATCH_SIZE = imp.BATCH_SIZE
 MAX_WORDS_IN_REVIEW = imp.MAX_WORDS_IN_REVIEW  # Maximum length of a review to consider
 EMBEDDING_SIZE = imp.EMBEDDING_SIZE  # Dimensions for each word vector
@@ -39,7 +42,27 @@ iterations = 100000
 checkpoints_dir = "./checkpoints"
 
 
-def load_data(path='./data/train'):
+# def load_data(path='./data/train'):
+#     """
+#     Load raw reviews from text files, and apply preprocessing
+#     Append positive reviews first, and negative reviews second
+#     RETURN: List of strings where each element is a preprocessed review.
+#     """
+#     print("Loading IMDB Data...")
+#     data = []
+
+#     dir = os.path.dirname(__file__)
+#     file_list = glob.glob(os.path.join(dir, path + '/pos/*'))
+#     file_list.extend(glob.glob(os.path.join(dir, path + '/neg/*')))
+#     print("Parsing %s files" % len(file_list))
+#     for _, f in enumerate(file_list):
+#         with open(f, "r") as openf:
+#             s = openf.read()
+#             data.append(imp.preprocess(s))  # NOTE: Preprocessing code called here on all reviews
+#     return data
+
+
+def load_zip(name = 'data.zip', dataset = 'train'):
     """
     Load raw reviews from text files, and apply preprocessing
     Append positive reviews first, and negative reviews second
@@ -48,15 +71,18 @@ def load_data(path='./data/train'):
     print("Loading IMDB Data...")
     data = []
 
-    dir = os.path.dirname(__file__)
-    file_list = glob.glob(os.path.join(dir, path + '/pos/*'))
-    file_list.extend(glob.glob(os.path.join(dir, path + '/neg/*')))
-    print("Parsing %s files" % len(file_list))
-    for i, f in enumerate(file_list):
-        with open(f, "r") as openf:
-            s = openf.read()
-            data.append(imp.preprocess(s))  # NOTE: Preprocessing code called here on all reviews
+    # data_zip = zp.ZipFile(name)
+    with zp.ZipFile(name) as data_zip:
+        for path in data_zip.namelist():
+            path_split = path.split('/')
+            # print(path_split)
+            if path_split[1] == dataset and path_split[-1] != '':
+
+                with data_zip.open('/'.join(path_split)) as f:
+                    s = f.read()
+                    data.append(imp.preprocess(s.decode()))
     return data
+
 
 
 def load_glove_embeddings():
@@ -142,7 +168,7 @@ def train():
     # Call implementation
     glove_array, glove_dict = load_glove_embeddings()
 
-    training_data_text = load_data()
+    training_data_text = load_zip(dataset='train')
     training_data_embedded = embedd_data(training_data_text, glove_array, glove_dict)
     input_data, labels, dropout_keep_prob, optimizer, accuracy, loss = \
         imp.define_graph()
@@ -187,7 +213,7 @@ def train():
 
 def eval(data_path):
     glove_array, glove_dict = load_glove_embeddings()
-    data_text = load_data(path=data_path)
+    data_text = load_zip(dataset=data_path)
     test_data = embedd_data(data_text, glove_array, glove_dict)
 
     num_samples = len(test_data)
@@ -223,19 +249,21 @@ def eval(data_path):
 
 
 if __name__ == "__main__":
-    import argparse
+    # import argparse
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument("mode", choices=["train", "eval", "test"])
+    # parser = argparse.ArgumentParser()
+    # parser.add_argument("mode", choices=["train", "eval", "test"])
 
-    args = parser.parse_args()
+    # args = parser.parse_args()
 
-    if (args.mode == "train"):
-        print("Training Run")
-        train()
-    elif (args.mode == "eval"):
-        print("Evaluation run")
-        eval("./data/validate")
-    elif (args.mode == "test"):
-        print("Test run")
-        eval("./data/test")
+    # if (args.mode == "train"):
+    #     print("Training Run")
+    #     train()
+    # elif (args.mode == "eval"):
+    #     print("Evaluation run")
+    #     eval("validate")
+    # elif (args.mode == "test"):
+    #     print("Test run")
+    #     eval("test")
+    a = load_zip(dataset='train')
+    print(a[0])
