@@ -41,6 +41,8 @@ iterations = 100000
 
 checkpoints_dir = "./checkpoints"
 
+validatefreq = 200
+
 
 # def load_data(path='./data/train'):
 #     """
@@ -167,15 +169,27 @@ def train():
 
     # Call implementation
     glove_array, glove_dict = load_glove_embeddings()
-
     training_data_text = load_zip(dataset='train')
     training_data_embedded = embedd_data(training_data_text, glove_array, glove_dict)
     input_data, labels, dropout_keep_prob, optimizer, accuracy, loss = \
         imp.define_graph()
 
+    # call the validation data
+    glove_array, glove_dict = load_glove_embeddings()
+    data_text = load_zip(dataset='validate')
+    test_data = embedd_data(data_text, glove_array, glove_dict)
+
+    num_samples = len(test_data)
+    num_batches = num_samples // BATCH_SIZE
+    label_list = [[1, 0]] * (num_samples // 2)  # pos always first, neg always second
+    label_list.extend([[0, 1]] * (num_samples // 2))
+    assert (len(label_list) == num_samples)
+
     # tensorboard
-    tf.summary.scalar("training_accuracy", accuracy)
-    tf.summary.scalar("loss", loss)
+    accuracy_validation = tf.placeholder_with_default(0.0, shape=(), name="accuracy_validation")
+    loss_validation = tf.placeholder_with_default(0.0, shape=(), name = "loss_validation")
+    tf.summary.scalar("dev_acc", accuracy_validation)
+    tf.summary.scalar("dev_loss", loss_validation)
     summary_op = tf.summary.merge_all()
 
     # saver
@@ -184,23 +198,38 @@ def train():
     sess = tf.InteractiveSession()
     sess.run(tf.global_variables_initializer())
 
-    logdir = "tensorboard/" + datetime.datetime.now().strftime(
-        "%Y%m%d-%H%M%S") + "/"
-    writer = tf.summary.FileWriter(logdir, sess.graph)
+    logdir_train = "tensorboard/" + datetime.datetime.now().strftime(
+        "%Y%m%d-%H%M%S-train") + "/"
+    logdir_test = "tensorboard/" + datetime.datetime.now().strftime(
+        "%Y%m%d-%H%M%S-test") + "/"
+
+    writer_train = tf.summary.FileWriter(logdir_train, sess.graph)
+    writer_test = tf.summary.FileWriter(logdir_test, sess.graph)
 
     for i in range(iterations):
         batch_data, batch_labels = getTrainBatch()
         sess.run(optimizer, {input_data: batch_data, labels: batch_labels,
                              dropout_keep_prob: 0.6})
+        
         if (i % 50 == 0):
-            loss_value, accuracy_value, summary = sess.run(
-                [loss, accuracy, summary_op],
+            loss_value, accuracy_value = sess.run(
+                [loss, accuracy],
                 {input_data: batch_data,
                  labels: batch_labels})
-            writer.add_summary(summary, i)
-            print("Iteration: ", i)
-            print("loss", loss_value)
-            print("acc", accuracy_value)
+            
+            _, _, sum_train = sess.run(
+                [loss_validation, accuracy_validation, summary_op],
+                {
+                    loss_validation: loss_value,
+                    accuracy_validation: accuracy_value
+                }
+            )
+
+            writer_train.add_summary(sum_train, i)
+            print("INFO-Iteration: ", i, end = ' - ')
+            print("loss: ", loss_value, end = ' - ')
+            print("accuracy: ", accuracy_value)
+        
         if (i % SAVE_FREQ == 0 and i != 0):
             if not os.path.exists(checkpoints_dir):
                 os.makedirs(checkpoints_dir)
@@ -208,12 +237,38 @@ def train():
                                        "/trained_model.ckpt",
                                        global_step=i)
             print("Saved model to %s" % save_path)
+        
+        if i % validatefreq == 0 and i != 0:
+            print("------------------validation mode activated---------------------")
+            total_acc = 0
+            total_lost = 0
+            for j in range(num_batches):
+                sample_index = j * BATCH_SIZE
+                batch_dev = test_data[sample_index:sample_index + BATCH_SIZE]
+                batch_labels_dev = label_list[sample_index:sample_index + BATCH_SIZE]
+                lossV, accuracyV = sess.run([loss, accuracy], {input_data: batch_dev,
+                                                            labels: batch_labels_dev})
+                total_acc += accuracyV
+                total_lost += lossV
+
+            _, _, validation = sess.run([accuracy_validation, loss_validation, summary_op],
+                        feed_dict={
+                            accuracy_validation: total_acc / num_batches,
+                            loss_validation: total_lost / num_batches
+                        })
+            
+            writer_test.add_summary(validation, i)
+            print("Validation INFO-", end = '')
+            print("average accuracy: ", total_acc / num_batches, end = ' - ')
+            print("average loss: ", total_lost / num_batches)
+            print("------------------------------end-------------------------------")
+
     sess.close()
 
 
-def eval(data_path):
+def eval(mode):
     glove_array, glove_dict = load_glove_embeddings()
-    data_text = load_zip(dataset=data_path)
+    data_text = load_zip(dataset=mode)
     test_data = embedd_data(data_text, glove_array, glove_dict)
 
     num_samples = len(test_data)
@@ -246,24 +301,22 @@ def eval(data_path):
         print("Accuracy %s, Loss: %s" % (accuracyV, lossV))
     print('-' * 40)
     print("FINAL ACC:", total_acc / num_batches)
-
+    sess.close()
 
 if __name__ == "__main__":
-    # import argparse
+    import argparse
 
-    # parser = argparse.ArgumentParser()
-    # parser.add_argument("mode", choices=["train", "eval", "test"])
+    parser = argparse.ArgumentParser()
+    parser.add_argument("mode", choices=["train", "eval", "test"])
 
-    # args = parser.parse_args()
+    args = parser.parse_args()
 
-    # if (args.mode == "train"):
-    #     print("Training Run")
-    #     train()
-    # elif (args.mode == "eval"):
-    #     print("Evaluation run")
-    #     eval("validate")
-    # elif (args.mode == "test"):
-    #     print("Test run")
-    #     eval("test")
-    a = load_zip(dataset='train')
-    print(a[0])
+    if (args.mode == "train"):
+        print("Training Run")
+        train()
+    elif (args.mode == "eval"):
+        print("Evaluation run")
+        eval("validate")
+    elif (args.mode == "test"):
+        print("Test run")
+        eval("test")
