@@ -21,7 +21,7 @@ we will develop a classifier able to detect the sentiment of movie reviews. Sent
 
 The training dataset contains a series of movie reviews scraped from the IMDB website. There are no more than 30 reviews for any one specific movie. The "data" directory contains two sub-directories, "train" and "validate". Each of these contains two sub-directories, "pos" and "neg". These directories contain the raw reviews in plain text form. The "train" directory contains 12500 positive and 12500 negative reviews; the "validate" directory contains 1000 positive and 1000 negative reviews. Each review is confined to the first line of its associated text file, with no line breaks.
 
-### preprocessing
+### Preprocessing
 
 Here is the technique that we use in this project:
 - Removing stop words
