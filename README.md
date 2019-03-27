@@ -1,6 +1,3 @@
-<script type=“text/javascript”
-src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=default">
-</script> 
 # COMP9444 assignment 2
 ## Recurrent Networks and Sentiment Classification
 
