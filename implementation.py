@@ -181,36 +181,60 @@ def define_graph():
         name="input_data"
     )
 
-    # input_data_norm = tf.layers.batch_normalization(input_data, axis=0)
+    input_data_norm = tf.layers.batch_normalization(input_data, axis=1)
+    input_data_norm = input_data
 
     labels = tf.placeholder(tf.float32, shape=(BATCH_SIZE, 2), name="labels")
 
-    LSTM_cell_1 = tf.nn.rnn_cell.LSTMCell(lstm_hidden_unit, forget_bias=1.0, name="LSTM1")
-    
-    LSTM_drop = tf.nn.rnn_cell.DropoutWrapper(
-        cell = LSTM_cell_1, 
+    LSTM_cell_fw = tf.contrib.rnn.BasicLSTMCell(lstm_hidden_unit)
+    LSTM_cell_bw = tf.contrib.rnn.BasicLSTMCell(lstm_hidden_unit)
+
+    LSTM_drop_fw = tf.nn.rnn_cell.DropoutWrapper(
+        cell = LSTM_cell_fw, 
         output_keep_prob = dropout_keep_prob
     )
 
-    initial_state = LSTM_cell_1.zero_state(BATCH_SIZE, dtype=tf.float32)
-
-    RNNout, _ = tf.nn.dynamic_rnn(
-        cell = LSTM_drop,
-        inputs = input_data, 
-        initial_state = initial_state,
-        dtype = tf.float32
+    LSTM_drop_bw = tf.nn.rnn_cell.DropoutWrapper(
+        cell = LSTM_cell_bw, 
+        output_keep_prob = dropout_keep_prob
     )
 
-    lastoutput_1 = RNNout[:, -1, :]
-    lastoutput_2 = RNNout[:, -2, :]
-    lastoutput_3 = RNNout[:, -3, :]
+    (RNNout_fw, RNNout_bw), _ = tf.nn.bidirectional_dynamic_rnn(
+                                cell_fw = LSTM_drop_fw,
+                                cell_bw = LSTM_drop_bw,
+                                inputs = input_data_norm,
+                                initial_state_fw=LSTM_cell_fw.zero_state(BATCH_SIZE, dtype=tf.float32),
+                                initial_state_bw=LSTM_cell_bw.zero_state(BATCH_SIZE, dtype=tf.float32),
+                                parallel_iterations = 16
+                            )
 
-    lastoutput = tf.concat([lastoutput_1, lastoutput_2, lastoutput_3], 1)
+    last_output = []
 
-    pred = tf.layers.dense(lastoutput, 256, activation = tf.nn.relu)
-    pred = tf.layers.dense(lastoutput, 128, activation = tf.nn.relu)
-    pred = tf.layers.dense(lastoutput, 64, activation = tf.nn.relu)
-    pred = tf.layers.dense(lastoutput, 2, activation = tf.nn.softmax)
+    for i in range(1):
+        last_output.append(RNNout_fw[:, -i, :])
+        last_output.append(RNNout_bw[:, -i, :])
+
+    lastoutput = tf.concat(last_output, 1)
+
+
+    with tf.name_scope("fc_layer"):
+        lastoutput_norm = tf.layers.batch_normalization(lastoutput, axis=1)
+        # lastoutput_norm = lastoutput
+
+        pred = tf.layers.dense(lastoutput_norm, 128, activation = tf.nn.relu)
+        pred = tf.layers.batch_normalization(pred, axis=1)
+        pred = tf.layers.dropout(pred, rate = dropout_keep_prob)
+        pred = tf.layers.dense(pred, 128, activation = tf.nn.relu)
+        pred = tf.layers.batch_normalization(pred, axis=1)
+        pred = tf.layers.dropout(pred, rate = dropout_keep_prob)
+        pred = tf.layers.dense(pred, 128, activation = tf.nn.relu)
+        pred = tf.layers.batch_normalization(pred, axis=1)
+        pred = tf.layers.dropout(pred, rate = dropout_keep_prob)
+        pred = tf.layers.dense(pred, 64, activation = tf.nn.relu)
+        pred = tf.layers.batch_normalization(pred, axis=1)
+        pred = tf.layers.dropout(pred, rate = dropout_keep_prob)
+
+        pred = tf.layers.dense(pred, 2, activation = tf.nn.softmax)
 
     cross_entropy = \
         tf.nn.softmax_cross_entropy_with_logits_v2(
@@ -230,8 +254,107 @@ def define_graph():
         )
 
     loss = tf.reduce_mean(cross_entropy, name = "loss")
-
     optimizer = tf.train.AdamOptimizer(learning_rate).minimize(loss)
+    # optimizer = tf.train.MomentumOptimizer(learning_rate, 0.9).minimize(loss)
 
     return input_data, labels, dropout_keep_prob, optimizer, Accuracy, loss
 
+def define_graph_auto(config):
+    '''
+    config = {
+        'batch_size': [64, 128, 256, 512],
+        'max_words': [137 - 250],
+        'lr': [0.01-0.0001],
+        'lstm_unit': [64, 128, 256, 512],
+        'output_dim': [1 - 10],
+        'layers': [1, 2, 3],
+    }
+    '''
+
+    lstm_hidden_unit = config['lstm_unit']
+
+    learning_rate = config['lr']
+
+    dropout_keep_prob = tf.placeholder_with_default(0.6, shape=(), name='drop_rate')
+
+    input_data = tf.placeholder(
+        tf.float32, 
+        shape=(config['batch_size'], config['max_words'], EMBEDDING_SIZE),
+        name="input_data"
+    )
+
+    input_data_norm = tf.layers.batch_normalization(input_data, axis=1)
+
+    labels = tf.placeholder(tf.float32, shape=(config['batch_size'], 2), name="labels")
+
+    LSTM_cell_fw = tf.nn.rnn_cell.LSTMCell(lstm_hidden_unit, forget_bias=0.9, name="LSTMFW", initializer=tf.orthogonal_initializer(seed = 5))
+    LSTM_cell_bw = tf.nn.rnn_cell.LSTMCell(lstm_hidden_unit, forget_bias=0.9, name="LSTMBW", initializer=tf.random_normal_initializer(seed = 5))
+    
+    LSTM_drop_fw = tf.nn.rnn_cell.DropoutWrapper(
+        cell = LSTM_cell_fw, 
+        output_keep_prob = dropout_keep_prob
+    )
+
+    LSTM_drop_bw = tf.nn.rnn_cell.DropoutWrapper(
+        cell = LSTM_cell_bw, 
+        output_keep_prob = dropout_keep_prob
+    )
+
+    (RNNout_fw, RNNout_bw), _ = tf.nn.bidirectional_dynamic_rnn(
+                                cell_fw = LSTM_drop_fw,
+                                cell_bw = LSTM_drop_bw,
+                                initial_state_fw=LSTM_cell_fw.zero_state(config['batch_size'], dtype=tf.float32),
+                                initial_state_bw=LSTM_cell_bw.zero_state(config['batch_size'], dtype=tf.float32),
+                                inputs = input_data_norm,
+                                parallel_iterations = 64
+                            )
+
+    last_output = []
+
+    for i in range(config['output_dim']):
+        last_output.append(RNNout_fw[:, -i, :])
+        last_output.append(RNNout_bw[:, -i, :])
+
+    lastoutput = tf.concat(last_output, 1)
+    lastoutput_norm = tf.layers.batch_normalization(lastoutput, axis=1)
+
+
+    if config['layers'] == 1:
+        pred = tf.layers.dense(lastoutput_norm, 128, activation = tf.nn.relu)
+        pred = tf.layers.batch_normalization(pred, axis=1)
+    elif config['layers'] == 2:
+        pred = tf.layers.dense(lastoutput_norm, 128, activation = tf.nn.relu)
+        pred = tf.layers.batch_normalization(pred, axis=1)
+        pred = tf.layers.dense(pred, 128, activation = tf.nn.relu)
+        pred = tf.layers.batch_normalization(pred, axis=1)
+    elif config['layers'] == 3:
+        pred = tf.layers.dense(lastoutput_norm, 128, activation = tf.nn.relu)
+        pred = tf.layers.batch_normalization(pred, axis=1)
+        pred = tf.layers.dense(pred, 128, activation = tf.nn.relu)
+        pred = tf.layers.batch_normalization(pred, axis=1)
+        pred = tf.layers.dense(pred, 128, activation = tf.nn.relu)
+        pred = tf.layers.batch_normalization(pred, axis=1)
+
+    pred = tf.layers.dense(pred, 2, activation = tf.nn.softmax)
+
+    cross_entropy = \
+        tf.nn.softmax_cross_entropy_with_logits_v2(
+                logits = pred, 
+                labels = labels
+            )
+
+    Accuracy = tf.reduce_mean(
+            tf.cast(
+                tf.equal(
+                    tf.argmax(pred, 1), 
+                    tf.argmax(labels, 1)
+                ), 
+                dtype = tf.float32
+            ),
+            name = "accuracy"
+        )
+
+    loss = tf.reduce_mean(cross_entropy, name = "loss")
+    optimizer = tf.train.AdamOptimizer(learning_rate).minimize(loss)
+
+    return input_data, labels, dropout_keep_prob, optimizer, Accuracy, loss

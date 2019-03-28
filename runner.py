@@ -41,7 +41,7 @@ iterations = 100000
 
 checkpoints_dir = "./checkpoints"
 
-validatefreq = 200
+validatefreq = 500
 
 
 # def load_data(path='./data/train'):
@@ -265,8 +265,104 @@ def train():
 
     sess.close()
 
+def embedd_data_config(training_data_text, e_arr, e_dict, config):
+    """
+    Take the list of strings created by load_data() and apply an
+    embeddings lookup using the created embeddings array and dictionary
+    RETURN: 3-D Numpy mat where axis 0 = reviews
+    axis 1 = words in review
+    axis 2 = emedding vec for word
 
-def eval(mode):
+    Note that the array then has the shape: NUM_SAMPLES x MAX_WORDS_IN_REVIEW x EMBEDDING_SIZE
+    Zero pad embedding if sentence is shorter than MAX_WORDS_IN_REVIEW
+    ensure
+    """
+    num_samples = len(training_data_text)
+    embedded = np.zeros([num_samples, config['max_words'], EMBEDDING_SIZE])
+    for i in range(num_samples):
+        review_mat = np.zeros([config['max_words'], EMBEDDING_SIZE])
+        # Iterate to either the end of the sentence of the max num of words, whichever is less
+        for w in range(min(len(training_data_text[i]), config['max_words'])):
+            # assign embedding of that word or to the UNK token if that word isn't in the dict
+            review_mat[w] = e_arr[e_dict.get(training_data_text[i][w], 0)]
+        embedded[i] = review_mat
+    return embedded
+
+def train_auto(config, budget):
+    '''
+    define a worker computation of train to fit the framework of the automl.
+    '''
+    def getTrainBatch():
+        labels = []
+        arr = np.zeros([config['batch_size'], config['max_words'], EMBEDDING_SIZE])
+        # print(arr.shape)
+        for i in range(config['batch_size']):
+            if (i % 2 == 0):
+                num = randint(0, 12499)
+                labels.append([1, 0])
+            else:
+                num = randint(12500, 24999)
+                labels.append([0, 1])
+            arr[i] = training_data_embedded[num, :, :]
+        return arr, labels
+
+    # clear the whole graph so that it can run many times.
+    tf.reset_default_graph()
+
+    # Call implementation
+    glove_array, glove_dict = load_glove_embeddings()
+    training_data_text = load_zip(dataset='train')
+    training_data_embedded = embedd_data_config(training_data_text, glove_array, glove_dict, config)
+    input_data, labels, dropout_keep_prob, optimizer, accuracy, loss = \
+        imp.define_graph_auto(config)
+
+    # call the validation data
+    data_text = load_zip(dataset='validate')
+    test_data = embedd_data_config(data_text, glove_array, glove_dict, config)
+
+    num_samples = len(test_data)
+    num_batches = num_samples // config['batch_size']
+    label_list = [[1, 0]] * (num_samples // 2)  # pos always first, neg always second
+    label_list.extend([[0, 1]] * (num_samples // 2))
+    assert (len(label_list) == num_samples)
+
+
+    with tf.Session() as sess:
+        sess.run(tf.global_variables_initializer())
+
+        # train
+        for _ in range(int(budget)):
+            batch_data, batch_labels = getTrainBatch()
+            sess.run(optimizer, {input_data: batch_data, labels: batch_labels,
+                                dropout_keep_prob: 0.6})
+
+        loss_value, accuracy_value = sess.run(
+                        [loss, accuracy],
+                        {input_data: batch_data,
+                        labels: batch_labels})
+
+        # validation
+        total_acc = 0.0
+        total_lost = 0.0
+        for j in range(num_batches):
+            sample_index = j * config['batch_size']
+            batch_dev = test_data[sample_index:sample_index + config['batch_size']]
+            batch_labels_dev = label_list[sample_index:sample_index + config['batch_size']]
+            lossV, accuracyV = sess.run([loss, accuracy], {input_data: batch_dev,
+                                                        labels: batch_labels_dev})
+            total_acc += accuracyV
+            total_lost += lossV
+
+    final_acc = total_acc / num_batches
+    final_loss = total_lost / num_batches
+
+    return {
+        'train': (accuracy_value, loss_value),
+        'validation': (final_acc, final_loss)
+    }
+
+
+def evalv(mode):
     glove_array, glove_dict = load_glove_embeddings()
     data_text = load_zip(dataset=mode)
     test_data = embedd_data(data_text, glove_array, glove_dict)
@@ -316,7 +412,7 @@ if __name__ == "__main__":
         train()
     elif (args.mode == "eval"):
         print("Evaluation run")
-        eval("validate")
+        evalv("validate")
     elif (args.mode == "test"):
         print("Test run")
-        eval("test")
+        evalv("test")
