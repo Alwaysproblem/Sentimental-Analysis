@@ -181,8 +181,6 @@ def define_graph():
         name="input_data"
     )
 
-    # input_data_norm = tf.layers.batch_normalization(input_data, axis=0)
-
     labels = tf.placeholder(tf.float32, shape=(BATCH_SIZE, 2), name="labels")
 
     LSTM_cell_1 = tf.nn.rnn_cell.LSTMCell(lstm_hidden_unit, forget_bias=1.0, name="LSTM1")
@@ -201,16 +199,28 @@ def define_graph():
         dtype = tf.float32
     )
 
-    lastoutput_1 = RNNout[:, -1, :]
-    lastoutput_2 = RNNout[:, -2, :]
-    lastoutput_3 = RNNout[:, -3, :]
+    # lastoutput_1 = RNNout[:, -1, :]
+    # lastoutput_2 = RNNout[:, -2, :]
+    # lastoutput_3 = RNNout[:, -3, :]
 
-    lastoutput = tf.concat([lastoutput_1, lastoutput_2, lastoutput_3], 1)
+    # lastoutput = tf.concat([lastoutput_1, lastoutput_2, lastoutput_3], 1)
+    lastoutput = RNNout[:, -1, :]
+    pred = tf.layers.batch_normalization(lastoutput, axis=1)
 
-    pred = tf.layers.dense(lastoutput, 256, activation = tf.nn.relu)
-    pred = tf.layers.dense(lastoutput, 128, activation = tf.nn.relu)
-    pred = tf.layers.dense(lastoutput, 64, activation = tf.nn.relu)
-    pred = tf.layers.dense(lastoutput, 2, activation = tf.nn.softmax)
+
+    pred = tf.layers.dense(pred, 128, activation = tf.nn.relu)
+    pred = tf.nn.dropout(pred, dropout_keep_prob)
+
+    pred = tf.layers.batch_normalization(pred, axis=1)
+    pred = tf.layers.dense(pred, 128, activation = tf.nn.relu)
+    pred = tf.nn.dropout(pred, dropout_keep_prob)
+
+    pred = tf.layers.batch_normalization(pred, axis=1)
+    pred = tf.layers.dense(pred, 128, activation = tf.nn.relu)
+    pred = tf.nn.dropout(pred, dropout_keep_prob)
+
+    pred = tf.layers.batch_normalization(pred, axis=1)
+    pred = tf.layers.dense(pred, 2, activation = tf.nn.softmax)
 
     cross_entropy = \
         tf.nn.softmax_cross_entropy_with_logits_v2(
