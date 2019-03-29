@@ -43,27 +43,6 @@ checkpoints_dir = "./checkpoints"
 
 validatefreq = 200
 
-
-# def load_data(path='./data/train'):
-#     """
-#     Load raw reviews from text files, and apply preprocessing
-#     Append positive reviews first, and negative reviews second
-#     RETURN: List of strings where each element is a preprocessed review.
-#     """
-#     print("Loading IMDB Data...")
-#     data = []
-
-#     dir = os.path.dirname(__file__)
-#     file_list = glob.glob(os.path.join(dir, path + '/pos/*'))
-#     file_list.extend(glob.glob(os.path.join(dir, path + '/neg/*')))
-#     print("Parsing %s files" % len(file_list))
-#     for _, f in enumerate(file_list):
-#         with open(f, "r") as openf:
-#             s = openf.read()
-#             data.append(imp.preprocess(s))  # NOTE: Preprocessing code called here on all reviews
-#     return data
-
-
 def load_zip(name = 'data.zip', dataset = 'train'):
     """
     Load raw reviews from text files, and apply preprocessing
@@ -107,18 +86,20 @@ def load_glove_embeddings():
     else:
         # create the embeddings
         print("Building embeddings dictionary...")
-        data = open("glove.6B.50d.txt", 'r', encoding="utf-8")
-        embeddings = [[0] * EMBEDDING_SIZE]
-        word_index_dict = {'UNK': 0}  # first row is for unknown words
-        index = 1
-        for line in data:
-            splitLine = line.split()
-            word = tf.compat.as_str(splitLine[0])
-            embedding = [float(val) for val in splitLine[1:]]
-            embeddings.append(embedding)
-            word_index_dict[word] = index
-            index += 1
-        data.close()
+        with zp.ZipFile('glove.6B.50d.zip') as glove:
+            fp = glove.namelist()[-1]
+            with glove.open(fp) as data:
+        # data = open("glove.6B.50d.txt", 'r', encoding="utf-8")
+                embeddings = [[0] * EMBEDDING_SIZE]
+                word_index_dict = {'UNK': 0}  # first row is for unknown words
+                index = 1
+                for line in data:
+                    splitLine = line.split()
+                    word = tf.compat.as_str(splitLine[0])
+                    embedding = [float(val) for val in splitLine[1:]]
+                    embeddings.append(embedding)
+                    word_index_dict[word] = index
+                    index += 1
 
         # pickle them
         with open('./embeddings.pkl', 'wb') as f:
@@ -171,7 +152,7 @@ def train():
     glove_array, glove_dict = load_glove_embeddings()
     training_data_text = load_zip(dataset='train')
     training_data_embedded = embedd_data(training_data_text, glove_array, glove_dict)
-    input_data, labels, dropout_keep_prob, optimizer, accuracy, loss = \
+    input_data, labels, dropout_keep_prob, optimizer, accuracy, loss, training = \
         imp.define_graph()
 
     # call the validation data
@@ -209,7 +190,7 @@ def train():
     for i in range(iterations):
         batch_data, batch_labels = getTrainBatch()
         sess.run(optimizer, {input_data: batch_data, labels: batch_labels,
-                             dropout_keep_prob: 0.6})
+                             dropout_keep_prob: 0.6, training: True})
         
         if (i % 50 == 0):
             loss_value, accuracy_value = sess.run(
