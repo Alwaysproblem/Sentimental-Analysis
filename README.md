@@ -40,9 +40,17 @@ We preprocess the words though getting rid of stop words and then encode rest of
 You can view the progress of your models using the tensorboard logging included in that file. To view these logs, run the following command from the source directory:
 
 ```shell
-$tensorboard --logdir=./tensorboard
+$tensorboard --logdir ./tensorboard
 ```
 
 Open a Web browser and navigate to
 
     http://localhost:6006
+
+### Results:
+
+learning curve for validation loss (orange) and train loss (blue) showm at the Tensorboard:
+![img](img/loss.png)
+
+learning curve for validation accuracy (orange) and train accuracy (blue) and validation accuracy should be about 85%:
+![img](img/validation_acc.png)
