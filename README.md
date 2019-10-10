@@ -1,5 +1,5 @@
 # COMP9444 assignment 2
-## Recurrent Networks and Sentiment Classification
+## Recurrent Neural Networks and Sentiment Classification
 
 ### Introduction
 
